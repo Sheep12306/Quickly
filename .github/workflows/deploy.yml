@@ -26,30 +26,12 @@ jobs:
         working-directory: front
         run: npm run build
 
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.ECS_SSH_KEY }}
-
-      - name: Rsync deploy files
+      - name: Package & deploy via SSH pipe
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
-          rsync -avz --delete \
-            front/dist/ \
-            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/quickly/front/dist/
-          rsync -avz \
-            front/package.json front/package-lock.json \
-            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/quickly/front/
-
-      - name: Install deps & restart
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          script: |
-            cd /opt/quickly/front
-            npm ci --omit=dev
-            pm2 restart quickly 2>/dev/null || PORT=3002 pm2 start dist/server.cjs --name quickly
-            pm2 save
+          cd front
+          tar czf /tmp/deploy.tar.gz dist package.json package-lock.json
+          ssh -o StrictHostKeyChecking=no -p 22 \
+            -i <(printf '%s' "${{ secrets.ECS_SSH_KEY }}") \
+            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} \
+            'mkdir -p /opt/quickly/front && cd /opt/quickly/front && tar xzf - && npm ci --omit=dev 2>/dev/null || npm install --omit=dev && (pm2 restart quickly 2>/dev/null || PORT=3002 pm2 start dist/server.cjs --name quickly) && pm2 save' \
+            < /tmp/deploy.tar.gz
