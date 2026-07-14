@@ -26,21 +26,36 @@ jobs:
         working-directory: front
         run: npm run build
 
-      - name: Write SSH key
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+          ECS_HOST: ${{ secrets.ECS_HOST }}
         run: |
+          set -e
           mkdir -p ~/.ssh
-          echo "${{ secrets.ECS_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "${SSH_KEY}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
+          # Validate key starts correctly
+          head -1 ~/.ssh/id_rsa
+          ssh-keyscan -H "${ECS_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "SSH config OK"
 
       - name: Deploy via rsync
+        env:
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_HOST: ${{ secrets.ECS_HOST }}
         run: |
-          rsync -avz front/dist/ ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/quickly/front/dist/
-          rsync -avz front/package.json front/package-lock.json ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/quickly/front/
+          set -e
+          rsync -avz front/dist/ ${ECS_USER}@${ECS_HOST}:/opt/quickly/front/dist/
+          rsync -avz front/package.json front/package-lock.json ${ECS_USER}@${ECS_HOST}:/opt/quickly/front/
 
       - name: Restart service
+        env:
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_HOST: ${{ secrets.ECS_HOST }}
         run: |
-          ssh ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }} "
+          set -e
+          ssh ${ECS_USER}@${ECS_HOST} "
             cd /opt/quickly/front
             npm ci --omit=dev 2>/dev/null || npm install --omit=dev
             pm2 restart quickly 2>/dev/null || PORT=3002 pm2 start dist/server.cjs --name quickly
