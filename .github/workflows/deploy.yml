@@ -26,17 +26,23 @@ jobs:
         working-directory: front
         run: npm run build
 
-      - name: Deploy to ECS
-        uses: easingthemes/ssh-deploy@v5
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.ECS_SSH_KEY }}
-          ARGS: "-rlgoDzvc --delete"
-          SOURCE: "front/dist/ front/package.json front/package-lock.json"
-          REMOTE_HOST: ${{ secrets.ECS_HOST }}
-          REMOTE_USER: ${{ secrets.ECS_USER }}
-          TARGET: "/opt/quickly/front"
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.ECS_SSH_KEY }}
 
-      - name: Restart service
+      - name: Rsync deploy files
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.ECS_HOST }} >> ~/.ssh/known_hosts
+          rsync -avz --delete \
+            front/dist/ \
+            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/quickly/front/dist/
+          rsync -avz \
+            front/package.json front/package-lock.json \
+            ${{ secrets.ECS_USER }}@${{ secrets.ECS_HOST }}:/opt/quickly/front/
+
+      - name: Install deps & restart
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.ECS_HOST }}
