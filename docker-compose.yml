@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  quickly:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    container_name: quickly
+    restart: unless-stopped
+    ports:
+      - "80:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      # Optional: set a shared Gemini API key for server-side fallback
+      # - GEMINI_API_KEY=your-key-here
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

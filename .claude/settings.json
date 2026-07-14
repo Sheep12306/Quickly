@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -r -I{} taskkill //PID {} //F)",
+      "Bash(NODE_ENV=production node dist/server.cjs)",
+      "Bash(curl -s --max-time 10 http://8.148.12.180:3001/api/status)"
+    ]
+  }
+}

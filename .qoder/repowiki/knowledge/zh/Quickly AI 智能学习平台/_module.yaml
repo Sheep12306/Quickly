@@ -1,0 +1,69 @@
+schema_version: 1
+module_path: ""
+title: Quickly AI 智能学习平台
+scope:
+    - PROJECT_OVERVIEW.md
+    - index.html
+    - .idea\.gitignore
+    - .idea\Quickly.iml
+    - .idea\inspectionProfiles\profiles_settings.xml
+    - .idea\misc.xml
+    - .idea\modules.xml
+    - .idea\workspace.xml
+    - backend\.env.example
+    - backend\README.md
+    - backend\app\__init__.py
+    - backend\app\api\__init__.py
+    - backend\app\api\auth.py
+    - backend\app\api\chat.py
+    - backend\app\api\knowledge.py
+    - backend\app\api\mastery.py
+    - backend\app\api\notes.py
+    - backend\app\api\review.py
+    - backend\app\api\settings.py
+    - backend\app\core\__init__.py
+    - backend\app\core\config.py
+    - backend\app\core\database.py
+    - backend\app\core\security.py
+    - backend\app\main.py
+    - backend\app\models\__init__.py
+    - backend\app\models\conversation.py
+    - backend\app\models\knowledge.py
+    - backend\app\models\mastery.py
+    - backend\app\models\note.py
+    - backend\app\models\review.py
+    - backend\app\models\settings.py
+    - backend\app\models\user.py
+    - backend\app\schemas\__init__.py
+    - backend\app\schemas\conversation.py
+    - backend\app\schemas\knowledge.py
+    - backend\app\schemas\mastery.py
+    - backend\app\schemas\note.py
+    - backend\app\schemas\settings.py
+    - backend\app\schemas\user.py
+    - backend\quickly.db
+    - backend\requirements.txt
+    - front\.env.example
+    - front\.gitignore
+    - front\README.md
+    - front\assets\.aistudio\.gitignore
+    - front\index.html
+    - front\metadata.json
+    - front\package-lock.json
+    - front\package.json
+    - front\server.ts
+    - front\src\App.tsx
+    - front\src\components\ActiveQuiz.tsx
+    - front\src\components\AuthPage.tsx
+    - front\src\components\NotesChest.tsx
+    - front\src\components\RightPanel.tsx
+    - front\src\components\SettingsPage.tsx
+    - front\src\components\Sidebar.tsx
+    - front\src\index.css
+    - front\src\main.tsx
+    - front\src\types.ts
+    - front\tsconfig.json
+    - front\vite.config.ts
+source_files: []
+depends_on: []
+related_to: []

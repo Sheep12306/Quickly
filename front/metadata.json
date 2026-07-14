@@ -1,0 +1,8 @@
+{
+  "name": "Quickly AI Learning Intelligence",
+  "description": "An elite AI-powered learning workspace designed for active mastery, dynamic structured Q&A, and auto-generated notes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
