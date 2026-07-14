@@ -26,38 +26,52 @@ jobs:
         working-directory: front
         run: npm run build
 
-      - name: Configure SSH
-        env:
-          SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
-          ECS_HOST: ${{ secrets.ECS_HOST }}
-        run: |
-          set -e
-          mkdir -p ~/.ssh
-          echo "${SSH_KEY}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          # Validate key starts correctly
-          head -1 ~/.ssh/id_rsa
-          ssh-keyscan -H "${ECS_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
-          echo "SSH config OK"
+      - name: Deploy & restart
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: 22
+          script_stop: true
+          script: |
+            set -e
+            echo "=== Deploying Quickly ==="
 
-      - name: Deploy via rsync
-        env:
-          ECS_USER: ${{ secrets.ECS_USER }}
-          ECS_HOST: ${{ secrets.ECS_HOST }}
-        run: |
-          set -e
-          rsync -avz front/dist/ ${ECS_USER}@${ECS_HOST}:/opt/quickly/front/dist/
-          rsync -avz front/package.json front/package-lock.json ${ECS_USER}@${ECS_HOST}:/opt/quickly/front/
+            mkdir -p /opt/quickly/front/dist
 
-      - name: Restart service
-        env:
-          ECS_USER: ${{ secrets.ECS_USER }}
-          ECS_HOST: ${{ secrets.ECS_HOST }}
-        run: |
-          set -e
-          ssh ${ECS_USER}@${ECS_HOST} "
+            # Write package.json
+            cat > /opt/quickly/front/package.json << 'PKGJSON'
+            {
+              "name": "quickly",
+              "private": true,
+              "version": "1.0.0",
+              "type": "module",
+              "scripts": {
+                "start": "node dist/server.cjs"
+              },
+              "dependencies": {
+                "@google/genai": "^2.4.0",
+                "dotenv": "^17.2.3",
+                "express": "^4.21.2"
+              }
+            }
+            PKGJSON
+
             cd /opt/quickly/front
-            npm ci --omit=dev 2>/dev/null || npm install --omit=dev
+            npm install --omit=dev
             pm2 restart quickly 2>/dev/null || PORT=3002 pm2 start dist/server.cjs --name quickly
             pm2 save
-          "
+            echo "=== Done ==="
+
+      - name: Upload dist
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: 22
+          source: front/dist/*
+          target: /opt/quickly/front/dist/
+          strip_components: 2
+          overwrite: true
