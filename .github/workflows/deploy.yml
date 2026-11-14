@@ -129,9 +129,12 @@ jobs:
               mv /usr/local/node-v22.11.0-linux-x64 "$NODE_DIR"
               rm -f /tmp/node22.tar.xz
             fi
-            "$NODE_DIR/bin/node" -v
+            # Make npm's shebang resolve to the Node 22 binary, not system Node 18.
+            export PATH="$NODE_DIR/bin:$PATH"
+            node -v
+            npm -v
 
-            "$NODE_DIR/bin/npm" ci --omit=dev 2>/dev/null || "$NODE_DIR/bin/npm" install --omit=dev
+            npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 
             pm2 delete quickly 2>/dev/null || true
 
