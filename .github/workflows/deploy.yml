@@ -24,6 +24,27 @@ jobs:
           npm ci
           npm run build
 
+      - name: Verify deploy secrets
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          set -e
+          test -n "$ECS_HOST" || { echo "::error::ECS_HOST is missing"; exit 1; }
+          test -n "$ECS_USER" || { echo "::error::ECS_USER is missing"; exit 1; }
+          test -n "$ECS_SSH_KEY" || { echo "::error::ECS_SSH_KEY is missing"; exit 1; }
+          echo "deploy secrets present"
+
+      - name: Test SSH connection
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: 22
+          script: echo connected
+
       - name: Upload build to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -31,7 +52,19 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           port: 22
-          source: "front/dist,front/package.json,front/package-lock.json"
+          source: "front/dist"
+          target: /opt/quickly/front
+          strip_components: 1
+          overwrite: true
+
+      - name: Upload package manifests
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: 22
+          source: "front/package.json,front/package-lock.json"
           target: /opt/quickly/front
           strip_components: 1
           overwrite: true
@@ -43,10 +76,14 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           port: 22
-          script_stop: true
           script: |
             set -e
             cd /opt/quickly/front
+
+            npm ci --omit=dev 2>/dev/null || npm install --omit=dev
+
+            # Stop before touching the DB so a copy is consistent.
+            pm2 delete quickly 2>/dev/null || true
 
             # Older deploys may have put the SQLite DB under dist/; keep it.
             if [ -f dist/data/quickly.db ] && [ ! -f data/quickly.db ]; then
@@ -54,10 +91,7 @@ jobs:
               cp -a dist/data/. data/
             fi
 
-            npm ci --omit=dev 2>/dev/null || npm install --omit=dev
-
             # Start from the project root: server.cjs resolves the frontend at
             # cwd/dist and the SQLite DB at cwd/data.
-            pm2 delete quickly 2>/dev/null || true
             PORT=3002 NODE_OPTIONS=--experimental-sqlite pm2 start dist/server.cjs --name quickly
             pm2 save
