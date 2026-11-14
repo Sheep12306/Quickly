@@ -34,55 +34,15 @@ jobs:
           test -n "$ECS_HOST" || { echo "::error::ECS_HOST is missing"; exit 1; }
           test -n "$ECS_USER" || { echo "::error::ECS_USER is missing"; exit 1; }
           test -n "$ECS_SSH_KEY" || { echo "::error::ECS_SSH_KEY is missing"; exit 1; }
-          echo "deploy secrets present"
-
-      - name: Export deploy public key
-        env:
-          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$ECS_SSH_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          pub=$(ssh-keygen -y -f ~/.ssh/deploy_key)
-          echo "::notice title=Deploy public key::$pub"
 
       - name: Test SSH connection
-        env:
-          ECS_HOST: ${{ secrets.ECS_HOST }}
-          ECS_USER: ${{ secrets.ECS_USER }}
-          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
-        run: |
-          set -u
-          mkdir -p ~/.ssh
-          printf '%s\n' "$ECS_SSH_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          # Surface the reason as a check annotation (readable without login).
-          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null 2>/tmp/key.err; then
-            echo "::error title=Invalid SSH key::$(tail -3 /tmp/key.err | tr '\n' ' ')"
-            exit 1
-          fi
-          echo "private key format OK"
-
-          if ! timeout 10 bash -c "cat < /dev/null > /dev/tcp/$ECS_HOST/22" 2>/tmp/tcp.err; then
-            echo "::error title=TCP 22 unreachable::$(tail -3 /tmp/tcp.err | tr '\n' ' ')"
-            exit 1
-          fi
-          echo "tcp 22 reachable"
-
-          set +e
-          ssh -v -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o IdentitiesOnly=yes -o ConnectTimeout=15 -i ~/.ssh/deploy_key \
-              "$ECS_USER@$ECS_HOST" "echo connected" > /tmp/ssh.out 2>/tmp/ssh.err
-          code=$?
-          set -e
-          if [ "$code" -ne 0 ]; then
-            msg=$(tr -d '\r' < /tmp/ssh.err | tail -15 | tr '\n' '|')
-            echo "::error title=SSH failed (exit $code)::$msg"
-            cat /tmp/ssh.err
-            exit 1
-          fi
-          echo "ssh connected"
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          port: 22
+          script: echo connected
 
       - name: Upload build to server
         uses: appleboy/scp-action@v0.1.7
@@ -119,8 +79,8 @@ jobs:
             set -e
             cd /opt/quickly/front
 
-            # node:sqlite needs Node 22.5+. Keep a private copy so the system
-            # Node 18 (used by other services) is left untouched.
+            # node:sqlite needs Node 22.5+. Use a private Node 22 so the
+            # system Node 18 used by other services is left untouched.
             NODE_DIR=/usr/local/node22
             if [ ! -x "$NODE_DIR/bin/node" ]; then
               echo "Installing Node 22..."
@@ -129,7 +89,6 @@ jobs:
               mv /usr/local/node-v22.11.0-linux-x64 "$NODE_DIR"
               rm -f /tmp/node22.tar.xz
             fi
-            # Make npm's shebang resolve to the Node 22 binary, not system Node 18.
             export PATH="$NODE_DIR/bin:$PATH"
             node -v
             npm -v
