@@ -119,9 +119,20 @@ jobs:
             set -e
             cd /opt/quickly/front
 
-            npm ci --omit=dev 2>/dev/null || npm install --omit=dev
+            # node:sqlite needs Node 22.5+. Keep a private copy so the system
+            # Node 18 (used by other services) is left untouched.
+            NODE_DIR=/usr/local/node22
+            if [ ! -x "$NODE_DIR/bin/node" ]; then
+              echo "Installing Node 22..."
+              curl -fsSL https://npmmirror.com/mirrors/node/v22.11.0/node-v22.11.0-linux-x64.tar.xz -o /tmp/node22.tar.xz
+              tar -xJf /tmp/node22.tar.xz -C /usr/local
+              mv /usr/local/node-v22.11.0-linux-x64 "$NODE_DIR"
+              rm -f /tmp/node22.tar.xz
+            fi
+            "$NODE_DIR/bin/node" -v
 
-            # Stop before touching the DB so a copy is consistent.
+            "$NODE_DIR/bin/npm" ci --omit=dev 2>/dev/null || "$NODE_DIR/bin/npm" install --omit=dev
+
             pm2 delete quickly 2>/dev/null || true
 
             # Older deploys may have put the SQLite DB under dist/; keep it.
@@ -132,5 +143,13 @@ jobs:
 
             # Start from the project root: server.cjs resolves the frontend at
             # cwd/dist and the SQLite DB at cwd/data.
-            PORT=3002 NODE_OPTIONS=--experimental-sqlite pm2 start dist/server.cjs --name quickly
+            PORT=3002 NODE_OPTIONS=--experimental-sqlite \
+              pm2 start dist/server.cjs --name quickly --interpreter "$NODE_DIR/bin/node"
+
+            sleep 3
+            if ! curl -fsS http://127.0.0.1:3002/api/status; then
+              logs=$(pm2 logs quickly --nostream --lines 20 2>&1 | tail -20 | tr '\n' '|' || true)
+              echo "::error title=Quickly failed to start::$logs"
+              exit 1
+            fi
             pm2 save
