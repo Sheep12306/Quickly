@@ -36,6 +36,16 @@ jobs:
           test -n "$ECS_SSH_KEY" || { echo "::error::ECS_SSH_KEY is missing"; exit 1; }
           echo "deploy secrets present"
 
+      - name: Export deploy public key
+        env:
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ECS_SSH_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          pub=$(ssh-keygen -y -f ~/.ssh/deploy_key)
+          echo "::notice title=Deploy public key::$pub"
+
       - name: Test SSH connection
         env:
           ECS_HOST: ${{ secrets.ECS_HOST }}
