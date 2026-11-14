@@ -37,13 +37,37 @@ jobs:
           echo "deploy secrets present"
 
       - name: Test SSH connection
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          port: 22
-          script: echo connected
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER }}
+          ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+        run: |
+          set -u
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ECS_SSH_KEY" | sed 's/\r$//' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Surface the reason as a check annotation (readable without login).
+          if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null 2>/tmp/key.err; then
+            echo "::error title=Invalid SSH key::$(tail -3 /tmp/key.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "private key format OK"
+
+          if ! timeout 10 bash -c "cat < /dev/null > /dev/tcp/$ECS_HOST/22" 2>/tmp/tcp.err; then
+            echo "::error title=TCP 22 unreachable::$(tail -3 /tmp/tcp.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "tcp 22 reachable"
+
+          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o ConnectTimeout=15 -i ~/.ssh/deploy_key "$ECS_USER@$ECS_HOST" \
+              "echo connected" > /tmp/ssh.out 2>/tmp/ssh.err; then
+            echo "::error title=SSH auth failed::$(tail -5 /tmp/ssh.err | tr '\n' ' ')"
+            cat /tmp/ssh.err
+            exit 1
+          fi
+          echo "ssh connected"
 
       - name: Upload build to server
         uses: appleboy/scp-action@v0.1.7
