@@ -105,7 +105,7 @@ jobs:
 
             # Start from the project root: server.cjs resolves the frontend at
             # cwd/dist and the SQLite DB at cwd/data.
-            PORT=3002 NODE_OPTIONS=--experimental-sqlite \
+            PORT=3002 COOKIE_SECURE=true NODE_OPTIONS=--experimental-sqlite \
               pm2 start dist/server.cjs --name quickly --interpreter "$NODE_DIR/bin/node"
 
             sleep 3
@@ -113,5 +113,11 @@ jobs:
               logs=$(pm2 logs quickly --nostream --lines 20 2>&1 | tail -20 | tr '\n' '|' || true)
               echo "::error title=Quickly failed to start::$logs"
               exit 1
+            fi
+
+            # Make sure the app comes back after a server reboot.
+            if ! systemctl is-enabled pm2-root >/dev/null 2>&1; then
+              pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+              systemctl enable pm2-root >/dev/null 2>&1 || true
             fi
             pm2 save
