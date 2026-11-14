@@ -60,10 +60,15 @@ jobs:
           fi
           echo "tcp 22 reachable"
 
-          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o ConnectTimeout=15 -i ~/.ssh/deploy_key "$ECS_USER@$ECS_HOST" \
-              "echo connected" > /tmp/ssh.out 2>/tmp/ssh.err; then
-            echo "::error title=SSH auth failed::$(tail -5 /tmp/ssh.err | tr '\n' ' ')"
+          set +e
+          ssh -v -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o IdentitiesOnly=yes -o ConnectTimeout=15 -i ~/.ssh/deploy_key \
+              "$ECS_USER@$ECS_HOST" "echo connected" > /tmp/ssh.out 2>/tmp/ssh.err
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            msg=$(tr -d '\r' < /tmp/ssh.err | tail -15 | tr '\n' '|')
+            echo "::error title=SSH failed (exit $code)::$msg"
             cat /tmp/ssh.err
             exit 1
           fi
