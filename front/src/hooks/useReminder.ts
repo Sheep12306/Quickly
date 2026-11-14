@@ -59,7 +59,7 @@ export function useReminder(settings: ReminderSettings) {
         if (hasPermission) {
           new Notification(title, {
             body: message,
-            icon: "/favicon.ico",
+            icon: "/favicon.svg",
             tag: "quickly-reminder",
           });
         }
