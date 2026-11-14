@@ -5,7 +5,6 @@ import {
   Bell, 
   Globe, 
   Palette, 
-  Save, 
   RefreshCcw,
   ChevronRight,
   Check,
@@ -15,17 +14,19 @@ import {
   Key,
   Link,
   Cpu,
-  Eye,
-  EyeOff,
   Wifi,
-  WifiOff
+  WifiOff,
+  Database,
+  ExternalLink
 } from "lucide-react";
-import { AIModelConfig, AI_MODEL_PRESETS } from "../types";
+import { AIModelConfig, AI_MODEL_PRESETS, IMAConfig, IMAKnowledgeBase, DEFAULT_IMA_CONFIG } from "../types";
 import { useI18n } from "../i18n";
 
 interface SettingsPageProps {
   modelConfig?: AIModelConfig;
   onModelConfigChange?: (config: AIModelConfig) => void;
+  imaConfig?: IMAConfig;
+  onImaConfigChange?: (config: IMAConfig) => void;
   theme?: string;
   onThemeChange?: (theme: string) => void;
   reminderEnabled?: boolean;
@@ -43,8 +44,9 @@ interface SettingsPageProps {
   onClose?: () => void;
 }
 
-export default function SettingsPage({ 
+export default function SettingsPage({
   modelConfig, onModelConfigChange,
+  imaConfig, onImaConfigChange,
   theme, onThemeChange,
   reminderEnabled, onReminderEnabledChange,
   reminderTime, onReminderTimeChange,
@@ -68,24 +70,23 @@ export default function SettingsPage({
   });
 
   // AI Model configuration state
-  const [aiConfig, setAiConfig] = useState<AIModelConfig>(() => {
-    const saved = localStorage.getItem("quickly_ai_config");
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return modelConfig || AI_MODEL_PRESETS[0];
-  });
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [aiConfig, setAiConfig] = useState<AIModelConfig>(() => modelConfig || AI_MODEL_PRESETS[0]);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{success: boolean; message: string} | null>(null);
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (modelConfig) setAiConfig(modelConfig);
+  }, [modelConfig]);
+
+  // IMA configuration state
+  const ima = imaConfig || DEFAULT_IMA_CONFIG;
+  const [imaTesting, setImaTesting] = useState(false);
+  const [imaTestResult, setImaTestResult] = useState<{success: boolean; message: string} | null>(null);
+  const [imaKnowledgeBases, setImaKnowledgeBases] = useState<IMAKnowledgeBase[]>([]);
 
   const updateAiConfig = <K extends keyof AIModelConfig>(key: K, value: AIModelConfig[K]) => {
     setAiConfig(prev => {
       const next = { ...prev, [key]: value, isConnected: false };
-      localStorage.setItem("quickly_ai_config", JSON.stringify(next));
       onModelConfigChange?.(next);
       return next;
     });
@@ -95,7 +96,6 @@ export default function SettingsPage({
   const selectPreset = (preset: AIModelConfig) => {
     const newConfig = { ...preset, apiKey: aiConfig.provider === preset.provider ? aiConfig.apiKey : "", isConnected: false };
     setAiConfig(newConfig);
-    localStorage.setItem("quickly_ai_config", JSON.stringify(newConfig));
     onModelConfigChange?.(newConfig);
     setTestResult(null);
   };
@@ -121,7 +121,6 @@ export default function SettingsPage({
       if (data.success) {
         const updated = { ...aiConfig, isConnected: true };
         setAiConfig(updated);
-        localStorage.setItem("quickly_ai_config", JSON.stringify(updated));
         onModelConfigChange?.(updated);
         setTestResult({ success: true, message: `连接成功！模型: ${data.model || aiConfig.model}` });
       } else {
@@ -134,12 +133,75 @@ export default function SettingsPage({
     }
   };
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const updateImaField = <K extends keyof IMAConfig>(key: K, value: IMAConfig[K]) => {
+    const next = { ...ima, [key]: value };
+    if (key === "clientId" || key === "apiKey" || key === "mcpUrl" || key === "provider") {
+      next.isConnected = false;
+    }
+    onImaConfigChange?.(next);
+    if (key === "clientId" || key === "apiKey") {
+      setImaTestResult(null);
+    }
+  };
+
+  const handleImaKbChange = (id: string) => {
+    const kb = imaKnowledgeBases.find(item => item.id === id);
+    onImaConfigChange?.({
+      ...ima,
+      knowledgeBaseId: id,
+      knowledgeBaseName: kb?.name || "",
+    });
+  };
+
+  const handleTestIma = async () => {
+    if ((ima.provider || "ima") !== "ima") {
+      setImaTestResult({ success: false, message: t.settings.kbNotionHint });
+      return;
+    }
+    if (!ima.clientId.trim() || !ima.apiKey.trim()) {
+      setImaTestResult({ success: false, message: t.settings.imaNeedCreds });
+      return;
+    }
+
+    setImaTesting(true);
+    setImaTestResult(null);
+
+    try {
+      const response = await fetch("/api/ima/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: ima.clientId.trim(), apiKey: ima.apiKey.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (data.success) {
+        const list: IMAKnowledgeBase[] = Array.isArray(data.knowledgeBases) ? data.knowledgeBases : [];
+        setImaKnowledgeBases(list);
+        const selected = list.find(kb => kb.id === ima.knowledgeBaseId) || (!ima.knowledgeBaseId ? list[0] : undefined);
+        onImaConfigChange?.({
+          ...ima,
+          enabled: true,
+          isConnected: true,
+          knowledgeBaseId: selected?.id ?? ima.knowledgeBaseId,
+          knowledgeBaseName: selected?.name ?? ima.knowledgeBaseName,
+        });
+        setImaTestResult({
+          success: true,
+          message: t.settings.imaTestSuccess.replace("{count}", String(list.length)),
+        });
+      } else {
+        onImaConfigChange?.({ ...ima, isConnected: false });
+        setImaTestResult({ success: false, message: data.error || t.settings.imaTestFailed });
+      }
+    } catch {
+      onImaConfigChange?.({ ...ima, isConnected: false });
+      setImaTestResult({
+        success: false,
+        message: locale === "en-US" ? "Network error: cannot reach the local server" : "网络错误，无法连接到本地服务",
+      });
+    } finally {
+      setImaTesting(false);
+    }
   };
 
   const updateSetting = <K extends keyof typeof settings>(key: K, value: typeof settings[K]) => {
@@ -161,6 +223,16 @@ export default function SettingsPage({
 
   const dailyGoals = [15, 30, 45, 60, 90, 120];
   const weeklyGoals = [7, 14, 21, 30];
+  const currentImaKb: IMAKnowledgeBase | null = ima.knowledgeBaseId
+    ? { id: ima.knowledgeBaseId, name: ima.knowledgeBaseName || ima.knowledgeBaseId }
+    : null;
+  const imaKbOptions: IMAKnowledgeBase[] = imaKnowledgeBases.length > 0
+    ? (currentImaKb && !imaKnowledgeBases.some(kb => kb.id === currentImaKb.id)
+        ? [...imaKnowledgeBases, currentImaKb]
+        : imaKnowledgeBases)
+    : currentImaKb
+      ? [currentImaKb]
+      : [];
   const [showCustomDaily, setShowCustomDaily] = useState(false);
   const [customDailyValue, setCustomDailyValue] = useState("");
   const [showCustomWeekly, setShowCustomWeekly] = useState(false);
@@ -168,191 +240,14 @@ export default function SettingsPage({
 
   return (
     <div className="flex-1 bg-[#121411] p-8 h-screen overflow-y-auto" id="settings-dashboard-pane">
-      <div className="max-w-2xl mx-auto space-y-8">
+      <div className="w-full max-w-5xl space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-[#e3e3de]">{t.settings.title}</h2>
-            <p className="text-xs text-[#c3caac]/70 mt-1">
-              {t.settings.subtitle}
-            </p>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold transition-all ${
-              saved 
-                ? "bg-[#b8f600]/10 text-[#b8f600] border border-[#b8f600]/30"
-                : isSaving
-                ? "bg-[#222222] text-white/40 cursor-not-allowed"
-                : "bg-[#b8f600] hover:bg-[#a1d800] text-[#141f00] active:scale-[0.98]"
-            }`}
-          >
-            {saved ? (
-              <>
-                <Check className="w-4 h-4" />
-                <span>{t.settings.saved}</span>
-              </>
-            ) : isSaving ? (
-              <>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                  className="w-4 h-4 border-2 border-current border-t-transparent rounded-full"
-                />
-                <span>{t.settings.saving}</span>
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                <span>{t.settings.save}</span>
-              </>
-            )}
-          </button>
+        <div>
+          <h2 className="text-xl font-bold text-[#e3e3de]">{t.settings.title}</h2>
+          <p className="text-xs text-[#c3caac]/70 mt-1">
+            {t.settings.subtitle}
+          </p>
         </div>
-
-        {/* Section 1: Learning Goals */}
-        <motion.section
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#222222] border border-white/5 rounded-xl p-6"
-        >
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-[#b8f600]/10 flex items-center justify-center">
-              <Target className="w-5 h-5 text-[#b8f600]" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-[#e3e3de]">{t.settings.learningGoals}</h3>
-              <p className="text-[10px] text-white/40">{t.settings.learningGoalsDesc}</p>
-            </div>
-          </div>
-
-          <div className="space-y-5">
-            {/* Daily Goal */}
-            <div>
-              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
-                {t.settings.dailyDuration}
-              </label>
-              <div className="grid grid-cols-7 gap-2">
-                {dailyGoals.map((goal) => (
-                  <button
-                    key={goal}
-                    onClick={() => { updateSetting("dailyGoal", goal); setShowCustomDaily(false); }}
-                    className={`py-2 rounded text-xs font-mono font-medium transition-all ${
-                      settings.dailyGoal === goal && !showCustomDaily
-                        ? "bg-[#b8f600] text-[#141f00]"
-                        : "bg-[#1a1c19] text-[#c3caac] hover:bg-[#2A2A2A]"
-                    }`}
-                  >
-                    {goal}{t.settings.minutes}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setShowCustomDaily(!showCustomDaily)}
-                  className={`py-2 rounded text-xs font-mono font-medium transition-all ${
-                    showCustomDaily
-                      ? "bg-[#b8f600] text-[#141f00]"
-                      : "bg-[#1a1c19] text-[#c3caac] hover:bg-[#2A2A2A]"
-                  }`}
-                >
-                  {t.settings.customDuration}
-                </button>
-              </div>
-              {showCustomDaily && (
-                <div className="flex items-center gap-2 mt-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={480}
-                    value={customDailyValue}
-                    onChange={(e) => setCustomDailyValue(e.target.value)}
-                    placeholder="30"
-                    className="w-20 bg-[#1a1c19] border border-white/10 rounded px-3 py-1.5 text-xs text-[#e3e3de] font-mono focus:outline-none focus:border-[#b8f600]"
-                  />
-                  <span className="text-[10px] text-white/40">{t.settings.minutes}</span>
-                  <button
-                    onClick={() => {
-                      const val = parseInt(customDailyValue);
-                      if (val > 0) { updateSetting("dailyGoal", val); setShowCustomDaily(false); }
-                    }}
-                    className="px-3 py-1.5 bg-[#b8f600] text-[#111111] rounded text-[10px] font-bold hover:bg-[#a6d600] transition-colors"
-                  >
-                    ✓
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Weekly Goal */}
-            <div>
-              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
-                {t.settings.weeklyDuration}
-              </label>
-              <div className="grid grid-cols-5 gap-2">
-                {weeklyGoals.map((goal) => (
-                  <button
-                    key={goal}
-                    onClick={() => { updateSetting("weeklyGoal", goal); setShowCustomWeekly(false); }}
-                    className={`py-2 rounded text-xs font-mono font-medium transition-all ${
-                      settings.weeklyGoal === goal && !showCustomWeekly
-                        ? "bg-[#b8f600] text-[#141f00]"
-                        : "bg-[#1a1c19] text-[#c3caac] hover:bg-[#2A2A2A]"
-                    }`}
-                  >
-                    {goal}{t.settings.hours}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setShowCustomWeekly(!showCustomWeekly)}
-                  className={`py-2 rounded text-xs font-mono font-medium transition-all ${
-                    showCustomWeekly
-                      ? "bg-[#b8f600] text-[#141f00]"
-                      : "bg-[#1a1c19] text-[#c3caac] hover:bg-[#2A2A2A]"
-                  }`}
-                >
-                  {t.settings.customDuration}
-                </button>
-              </div>
-              {showCustomWeekly && (
-                <div className="flex items-center gap-2 mt-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={168}
-                    value={customWeeklyValue}
-                    onChange={(e) => setCustomWeeklyValue(e.target.value)}
-                    placeholder="20"
-                    className="w-20 bg-[#1a1c19] border border-white/10 rounded px-3 py-1.5 text-xs text-[#e3e3de] font-mono focus:outline-none focus:border-[#b8f600]"
-                  />
-                  <span className="text-[10px] text-white/40">{t.settings.hours}</span>
-                  <button
-                    onClick={() => {
-                      const val = parseInt(customWeeklyValue);
-                      if (val > 0) { updateSetting("weeklyGoal", val); setShowCustomWeekly(false); }
-                    }}
-                    className="px-3 py-1.5 bg-[#b8f600] text-[#111111] rounded text-[10px] font-bold hover:bg-[#a6d600] transition-colors"
-                  >
-                    ✓
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Weekly Progress */}
-            <div className="flex items-center justify-between p-3 bg-[#1a1c19] rounded-lg">
-              <div>
-                <span className="text-xs text-[#c3caac]">{t.settings.weeklyProgress}</span>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xl font-bold text-[#e3e3de] font-mono">{Math.round((20 / (settings.weeklyGoal || 14)) * 100)}%</span>
-                  <span className="text-[10px] text-white/40">20{t.settings.hours} / {settings.weeklyGoal || 14}{t.settings.hours}</span>
-                </div>
-              </div>
-              <div className="w-32 h-1.5 bg-[#111111] rounded-full overflow-hidden">
-                <div className="h-full bg-[#b8f600]" style={{ width: `${Math.min(100, Math.round((20 / (settings.weeklyGoal || 14)) * 100))}%` }} />
-              </div>
-            </div>
-          </div>
-        </motion.section>
 
         {/* Section 2: Reminder Settings */}
         <motion.section
@@ -573,19 +468,17 @@ export default function SettingsPage({
               </label>
               <div className="relative">
                 <input
-                  type={showApiKey ? "text" : "password"}
+                  type="password"
                   value={aiConfig.apiKey}
                   onChange={(e) => updateAiConfig("apiKey", e.target.value)}
+                  onCopy={(e) => e.preventDefault()}
+                  onCut={(e) => e.preventDefault()}
+                  onContextMenu={(e) => e.preventDefault()}
+                  autoComplete="off"
+                  spellCheck={false}
                   placeholder={aiConfig.provider === "gemini" ? `Gemini ${t.settings.apiKey}` : t.settings.apiKey}
-                  className="w-full bg-[#1a1c19] border border-white/5 rounded px-4 py-2.5 pr-10 text-xs text-[#e3e3de] placeholder-white/20 focus:outline-none focus:border-[#b8f600] transition-colors font-mono"
+                  className="w-full bg-[#1a1c19] border border-white/5 rounded px-4 py-2.5 text-xs text-[#e3e3de] placeholder-white/20 focus:outline-none focus:border-[#b8f600] transition-colors font-mono"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
-                >
-                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
               </div>
             </div>
 
@@ -622,6 +515,9 @@ export default function SettingsPage({
                   {t.settings.defaultLabel} {AI_MODEL_PRESETS.find(p => p.provider === aiConfig.provider)?.model || "-"}
                 </p>
               )}
+              <p className="text-[10px] text-white/30 mt-1.5 leading-relaxed">
+                {t.settings.modelNameHint}
+              </p>
             </div>
 
             {/* Connection Test */}
@@ -661,11 +557,199 @@ export default function SettingsPage({
           </div>
         </motion.section>
 
-        {/* Section 6: Advanced Settings */}
+        {/* Section 6: IMA Knowledge Base */}
         <motion.section
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
+          className="bg-[#222222] border border-white/5 rounded-xl p-6"
+        >
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-emerald-400/10 flex items-center justify-center">
+              <Database className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-[#e3e3de]">{t.settings.imaTitle}</h3>
+              <p className="text-[10px] text-white/40">{t.settings.imaDesc}</p>
+            </div>
+            {(ima.provider || "ima") === "ima" && (
+              <a
+                href="https://ima.qq.com/agent-interface"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-[10px] font-mono text-[#b8f600] hover:text-[#d4ff66] transition-colors"
+              >
+                {t.settings.imaGetKey}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+
+          <div className="space-y-5">
+            {/* Provider */}
+            <div>
+              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
+                {t.settings.kbProvider}
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "ima" as const, label: t.settings.kbProviderIma },
+                  { id: "notion" as const, label: t.settings.kbProviderNotion },
+                  { id: "custom" as const, label: t.settings.kbProviderCustom },
+                ].map((provider) => (
+                  <button
+                    key={provider.id}
+                    onClick={() => updateImaField("provider", provider.id)}
+                    className={`px-3 py-2 rounded border text-[10px] font-bold transition-colors ${
+                      (ima.provider || "ima") === provider.id
+                        ? "bg-[#b8f600]/10 border-[#b8f600]/30 text-[#b8f600]"
+                        : "bg-[#1a1c19] border-white/5 text-[#c3caac] hover:border-white/15"
+                    }`}
+                  >
+                    {provider.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-white/30 mt-1.5 leading-relaxed">
+                {ima.provider === "ima" ? t.settings.kbProviderHint : t.settings.kbNotionHint}
+              </p>
+            </div>
+
+            {/* Enable IMA */}
+            <div className="flex items-center justify-between p-3 bg-[#1a1c19] rounded-lg">
+              <div>
+                <span className="text-xs font-medium text-[#e3e3de]">{t.settings.imaEnabled}</span>
+                <p className="text-[10px] text-white/40 mt-0.5">{t.settings.imaEnabledDesc}</p>
+              </div>
+              <button
+                onClick={() => updateImaField("enabled", !ima.enabled)}
+                className={`w-11 h-6 rounded-full transition-colors relative ${
+                  ima.enabled ? "bg-[#b8f600]" : "bg-[#3a3a3a]"
+                }`}
+              >
+                <motion.div
+                  animate={{ x: ima.enabled ? 22 : 2 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  className="w-5 h-5 bg-white rounded-full absolute top-0.5 shadow"
+                />
+              </button>
+            </div>
+
+            {/* MCP service URL */}
+            <div>
+              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
+                <span className="flex items-center gap-1.5"><Link className="w-3 h-3" /> {t.settings.imaMcpUrl}</span>
+              </label>
+              <input
+                type="url"
+                value={ima.mcpUrl}
+                onChange={(e) => updateImaField("mcpUrl", e.target.value)}
+                placeholder="https://your-ima-mcp-server/mcp"
+                className="w-full bg-[#1a1c19] border border-white/5 rounded px-4 py-2.5 text-xs text-[#e3e3de] placeholder-white/20 focus:outline-none focus:border-[#b8f600] transition-colors font-mono"
+              />
+              <p className="text-[10px] text-white/30 mt-1.5 leading-relaxed">{t.settings.imaMcpHint}</p>
+            </div>
+
+            {/* Client ID */}
+            <div>
+              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
+                <span className="flex items-center gap-1.5"><Key className="w-3 h-3" /> {t.settings.imaClientId}</span>
+              </label>
+              <input
+                type="text"
+                value={ima.clientId}
+                onChange={(e) => updateImaField("clientId", e.target.value)}
+                placeholder="IMA Client ID"
+                autoComplete="off"
+                className="w-full bg-[#1a1c19] border border-white/5 rounded px-4 py-2.5 text-xs text-[#e3e3de] placeholder-white/20 focus:outline-none focus:border-[#b8f600] transition-colors font-mono"
+              />
+            </div>
+
+            {/* API Key */}
+            <div>
+              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
+                <span className="flex items-center gap-1.5"><Key className="w-3 h-3" /> {t.settings.imaApiKey}</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={ima.apiKey}
+                  onChange={(e) => updateImaField("apiKey", e.target.value)}
+                  onCopy={(e) => e.preventDefault()}
+                  onCut={(e) => e.preventDefault()}
+                  onContextMenu={(e) => e.preventDefault()}
+                  placeholder="IMA API Key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="w-full bg-[#1a1c19] border border-white/5 rounded px-4 py-2.5 text-xs text-[#e3e3de] placeholder-white/20 focus:outline-none focus:border-[#b8f600] transition-colors font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Default knowledge base */}
+            <div>
+              <label className="text-[10px] font-mono text-white/50 uppercase tracking-wider block mb-2">
+                <span className="flex items-center gap-1.5"><Database className="w-3 h-3" /> {t.settings.imaKnowledgeBase}</span>
+              </label>
+              <select
+                value={ima.knowledgeBaseId}
+                onChange={(e) => handleImaKbChange(e.target.value)}
+                disabled={imaKbOptions.length === 0}
+                className="w-full bg-[#1a1c19] border border-white/5 rounded px-4 py-2.5 text-xs text-[#e3e3de] focus:outline-none focus:border-[#b8f600] transition-colors disabled:text-white/30"
+              >
+                <option value="">{t.settings.imaKbNone}</option>
+                {imaKbOptions.map((kb) => (
+                  <option key={kb.id} value={kb.id}>
+                    {kb.name}{kb.contentCount ? ` (${kb.contentCount})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Connection test */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={handleTestIma}
+                disabled={imaTesting || (ima.provider || "ima") !== "ima" || !ima.clientId.trim() || !ima.apiKey.trim()}
+                className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-bold transition-all ${
+                  imaTesting
+                    ? "bg-[#1a1c19] text-white/40 cursor-not-allowed"
+                    : !ima.clientId.trim() || !ima.apiKey.trim()
+                    ? "bg-[#1a1c19] text-white/20 cursor-not-allowed"
+                    : ima.isConnected
+                    ? "bg-[#b8f600]/10 text-[#b8f600] border border-[#b8f600]/30"
+                    : "bg-[#1a1c19] border border-white/10 text-[#c3caac] hover:border-[#b8f600]/30 hover:text-[#b8f600]"
+                }`}
+              >
+                {imaTesting ? (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                    className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full"
+                  />
+                ) : ima.isConnected ? (
+                  <Wifi className="w-3.5 h-3.5" />
+                ) : (
+                  <WifiOff className="w-3.5 h-3.5" />
+                )}
+                <span>{imaTesting ? t.settings.imaTesting : ima.isConnected ? t.settings.imaConnected : t.settings.imaTest}</span>
+              </button>
+              {imaTestResult && (
+                <span className={`text-[10px] font-mono ${imaTestResult.success ? "text-[#b8f600]" : "text-rose-400"}`}>
+                  {imaTestResult.message}
+                </span>
+              )}
+            </div>
+
+            <p className="text-[10px] text-white/30 leading-relaxed">{t.settings.imaPrivacy}</p>
+          </div>
+        </motion.section>
+
+        {/* Section 7: Advanced Settings */}
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
           className="bg-[#222222] border border-white/5 rounded-xl p-6"
         >
           <div className="flex items-center gap-3 mb-6">

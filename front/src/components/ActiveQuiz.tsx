@@ -3,13 +3,12 @@ import {
   X, 
   CheckCircle, 
   XCircle, 
-  Award, 
-  HelpCircle,
+  Award,
   Timer,
   ChevronRight,
   Sparkles
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { QuizQuestion, AIModelConfig } from "../types";
 import { useI18n } from "../i18n";
 
@@ -157,7 +156,7 @@ export default function ActiveQuiz({ topicId, topicName, modelConfig, noteConten
   };
 
   return (
-    <div className="fixed inset-0 bg-[#0d0f0c]/90 backdrop-blur-md flex items-center justify-center p-4 z-50 overflow-y-auto" id="quiz-full-overlay">
+    <div className="fixed inset-0 modal-backdrop flex items-center justify-center p-4 z-50 overflow-y-auto" id="quiz-full-overlay">
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -300,28 +299,6 @@ export default function ActiveQuiz({ topicId, topicName, modelConfig, noteConten
                   );
                 })}
               </div>
-
-              {/* Corrective Explanation feedback block */}
-              <AnimatePresence>
-                {isAnswered && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-4 bg-[#121411] rounded border border-white/5 mb-6 text-left"
-                    id="quiz-explanation-box"
-                  >
-                    <div className="flex items-start gap-3">
-                      <HelpCircle className="w-5 h-5 text-[#b8f600] shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[11px] font-bold text-[#e3e3de] block">{t.quiz.academicAnalysis}</span>
-                        <p className="text-[11px] text-[#c3caac]/80 leading-relaxed mt-1" id="text-quiz-explanation">
-                          {currentQuestion.explanation}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {/* Next Button */}
               <div className="flex justify-end pt-4 border-t border-white/5">

@@ -12,8 +12,17 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=production
+      # Set true when serving over HTTPS
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
       # Optional: set a shared Gemini API key for server-side fallback
       # - GEMINI_API_KEY=your-key-here
+      # Optional: built-in Anthropic-compatible AI (passed from the host environment)
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+    volumes:
+      # Persist the account / metadata SQLite database
+      - ./front/data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/status"]
       interval: 30s

@@ -3,39 +3,36 @@ import {
   GraduationCap,
   FileText,
   Sparkles,
-  Route,
   RotateCcw,
+  BookMarked,
   Settings,
-  Play,
-  Pause,
+  LogOut,
 } from "lucide-react";
 import { useI18n } from "../i18n";
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  minutesLearned: number;
-  dailyGoal?: number;
-  isTimerRunning: boolean;
-  onToggleTimer: () => void;
+  userName?: string;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
 export default function Sidebar({
   activeTab,
   setActiveTab,
-  minutesLearned,
-  dailyGoal,
-  isTimerRunning,
-  onToggleTimer,
+  userName,
+  userEmail,
+  onLogout,
 }: SidebarProps) {
   const { t } = useI18n();
 
   const tabs = [
     { id: "study", label: t.sidebar.study, icon: GraduationCap },
     { id: "notes", label: t.sidebar.notes, icon: FileText },
-    { id: "mastery", label: t.sidebar.mastery, icon: Sparkles },
-    { id: "path", label: t.sidebar.path, icon: Route },
     { id: "review", label: t.sidebar.review, icon: RotateCcw },
+    { id: "mastery", label: t.sidebar.mastery, icon: Sparkles },
+    { id: "library", label: t.sidebar.library, icon: BookMarked },
     { id: "settings", label: t.sidebar.settings, icon: Settings },
   ];
 
@@ -86,35 +83,28 @@ export default function Sidebar({
 
       {/* Profiler Bottom Section */}
       <div className="pt-4 border-t border-[#434933]/30 space-y-3" id="quickly-user-profile-sec">
-        {/* User row with timer button */}
+        {/* User row */}
         <div className="flex items-center gap-2">
-          {/* Default avatar — no login, always "momo" */}
-          <div className="w-8 h-8 rounded-full border border-[#434933]/40 bg-[#292a27] flex items-center justify-center shrink-0" title="momo">
-            <span className="text-xs font-bold text-[#b8f600] font-mono">m</span>
-          </div>
-          <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-xs font-bold text-[#e3e3de] block truncate">momo</span>
-            <span className="text-[10px] text-[#c3caac] block truncate mt-0.5">
-              {minutesLearned}/{dailyGoal || 60}{t.sidebar.minutes}
+          <div className="w-8 h-8 rounded-full border border-[#434933]/40 bg-[#292a27] flex items-center justify-center shrink-0" title={userEmail || userName || "Quickly"}>
+            <span className="text-xs font-bold text-[#b8f600] font-mono">
+              {(userName || "Q").slice(0, 1).toLowerCase()}
             </span>
           </div>
-
-          {/* Timer toggle button */}
-          <button
-            onClick={onToggleTimer}
-            title={isTimerRunning ? "暂停计时" : "开始计时"}
-            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all cursor-pointer ${
-              isTimerRunning
-                ? "bg-[#b8f600]/15 text-[#b8f600] border border-[#b8f600]/30 animate-pulse"
-                : "bg-[#1a1c19] text-[#c3caac] border border-white/10 hover:border-[#b8f600]/30 hover:text-[#b8f600]"
-            }`}
-          >
-            {isTimerRunning ? (
-              <Pause className="w-3.5 h-3.5" />
-            ) : (
-              <Play className="w-3.5 h-3.5 ml-0.5" />
-            )}
-          </button>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="text-xs font-bold text-[#e3e3de] block truncate">{userName || "Quickly"}</span>
+            <span className="text-[10px] text-[#c3caac] block truncate mt-0.5">
+              {userEmail || t.sidebar.localWorkspace}
+            </span>
+          </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              title={t.sidebar.logout}
+              className="p-1.5 rounded text-white/25 hover:text-rose-400 hover:bg-rose-400/10 transition-colors shrink-0"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </nav>

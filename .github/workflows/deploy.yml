@@ -23,18 +23,15 @@ jobs:
         run: |
           npm ci
           npm run build
-          # Bundle package files into dist/ so server deps stay in sync
-          cp package.json dist/
-          cp package-lock.json dist/
 
-      - name: Upload dist to server
+      - name: Upload build to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           port: 22
-          source: front/dist
+          source: "front/dist,front/package.json,front/package-lock.json"
           target: /opt/quickly/front
           strip_components: 1
           overwrite: true
@@ -46,8 +43,21 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_KEY }}
           port: 22
+          script_stop: true
           script: |
-            cd /opt/quickly/front/dist
+            set -e
+            cd /opt/quickly/front
+
+            # Older deploys may have put the SQLite DB under dist/; keep it.
+            if [ -f dist/data/quickly.db ] && [ ! -f data/quickly.db ]; then
+              mkdir -p data
+              cp -a dist/data/. data/
+            fi
+
             npm ci --omit=dev 2>/dev/null || npm install --omit=dev
-            pm2 restart quickly 2>/dev/null || PORT=3002 pm2 start server.cjs --name quickly
+
+            # Start from the project root: server.cjs resolves the frontend at
+            # cwd/dist and the SQLite DB at cwd/data.
+            pm2 delete quickly 2>/dev/null || true
+            PORT=3002 NODE_OPTIONS=--experimental-sqlite pm2 start dist/server.cjs --name quickly
             pm2 save
